@@ -116,4 +116,5 @@ function aboutApp(){dialogForm("SKD90","Sistem Kendali Diri 90 Hari",`<p style="
 function render(){rollover();document.documentElement.dataset.theme=data.settings.theme;const pages={home,focus,goals,stats,more,review,failure,detail,rewards,settings};document.getElementById("app").innerHTML=data.onboarded?(pages[route]||home)():splash();if(data.onboarded&&route==="focus")updateTimerDisplay();document.title=`${data.onboarded?({home:"Beranda",focus:"Fokus",goals:"Target 90 Hari",stats:"Statistik",more:"Lainnya",review:"Review Mingguan",failure:"Jurnal Kegagalan",detail:"Detail Jurnal",rewards:"Reward",settings:"Profil"}[route]||"Beranda")+" · ":""}SKD90`;}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){tick();if(data.todayDate!==todayKey())render();}});
 if("serviceWorker" in navigator&&location.protocol!=="file:")window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+data.onboarded = false;
 render();
