@@ -500,3 +500,621 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden){tick();if
 if("serviceWorker" in navigator&&location.protocol!=="file:")window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 data.onboarded = false;
 render();
+/* =========================================================
+   SKD90 UPDATE
+   1. Status MIT: "1 dari 3 selesai"
+   2. Statistik konsistensi per kategori
+   Cukup paste blok ini di PALING BAWAH app.js
+   ========================================================= */
+
+
+/* ---------- STATUS MIT YANG LEBIH JELAS ---------- */
+
+function home(){
+  const d=selectedDay();
+  const s=dayScore(d);
+  const items=ensureMitItems(d);
+
+  const filledMit=items.filter(item=>item.text.trim());
+  const totalMit=filledMit.length;
+  const doneMit=filledMit.filter(item=>item.done).length;
+
+  const mitStatus=
+    totalMit===0
+      ?"Belum ada tugas · Maks. 5 tugas"
+      :doneMit===totalMit
+        ?`${doneMit} dari ${totalMit} selesai ✓`
+        :`${doneMit} dari ${totalMit} selesai · Maks. 5 tugas`;
+
+  const mitRows=items.map((item,i)=>`
+    <div class="mit-item">
+
+      <span class="mit-number">
+        ${i+1}
+      </span>
+
+      <button
+        class="mit-label"
+        onclick="editDaily()"
+        aria-label="Edit tugas ${i+1}"
+      >
+        ${esc(
+          item.text ||
+          (i===0
+            ?"Tentukan satu tugas paling penting hari ini"
+            :"Tugas tambahan")
+        )}
+      </button>
+
+      <button
+        class="check ${item.done?"done":""}"
+        role="checkbox"
+        aria-checked="${item.done}"
+        aria-label="Tugas ${i+1} selesai"
+        onclick="toggleMit(${i})"
+      >
+        ${item.done?icon("check"):""}
+      </button>
+
+    </div>
+  `).join("");
+
+  return shell(
+    `
+    ${dateStrip(
+      formatDate(selectedDate,{
+        weekday:"short",
+        day:"numeric",
+        month:"short",
+        year:"numeric"
+      }),
+      "moveDate(-1)",
+      "moveDate(1)",
+      selectedDate>=todayKey()
+    )}
+
+    <div class="check-list">
+
+      <div class="checkrow featured mit-card">
+
+        <div class="mit-head">
+
+          <div>
+            <b>Tugas Utama Hari Ini (MIT)</b>
+            <small>${mitStatus}</small>
+          </div>
+
+          <button
+            class="text-btn"
+            onclick="editDaily()"
+          >
+            Atur
+          </button>
+
+        </div>
+
+        <div class="mit-list">
+          ${mitRows}
+        </div>
+
+      </div>
+
+      ${checkRow(
+        "deep",
+        "Fokus Tanpa Gangguan",
+        "Deep Work · "+data.settings.focusMinutes+" menit",
+        "clock"
+      )}
+
+      ${checkRow(
+        "habit",
+        "Kebiasaan Utama",
+        d.habitText,
+        "dumbbell"
+      )}
+
+      ${checkRow(
+        "noscroll",
+        "Pagi Tanpa Scroll",
+        "60 menit pertama setelah bangun",
+        "phone"
+      )}
+
+      ${checkRow(
+        "review",
+        "Evaluasi Malam",
+        "Refleksi singkat 3 menit",
+        "book"
+      )}
+
+    </div>
+
+
+    <div class="card progress-card">
+
+      <div class="row">
+
+        <div class="section-title">
+          Progres Hari Ini
+        </div>
+
+        <button
+          class="text-btn"
+          onclick="editDaily()"
+        >
+          Atur
+        </button>
+
+      </div>
+
+      <div class="row">
+
+        <div
+          class="progress"
+          role="progressbar"
+          aria-valuenow="${s*20}"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span style="width:${s*20}%"></span>
+        </div>
+
+        <strong>${s}/5</strong>
+
+      </div>
+
+    </div>
+
+    <p class="day-note">
+      ${
+        s===5
+          ?"Semua selesai. Kamu hebat hari ini!"
+          :s>=4
+          ?"Hari yang konsisten. Teruskan langkah kecilmu."
+          :"Satu langkah kecil, setiap hari."
+      }
+    </p>
+    `,
+
+    `Halo, ${esc(data.name)}
+      <span style="font-size:21px">👋</span>`,
+
+    "Siap menjalani hari yang lebih baik?",
+
+    `
+      <button
+        class="avatar"
+        aria-label="Buka profil"
+        onclick="go('settings')"
+      >
+        ${esc((data.name||"K").slice(0,1).toUpperCase())}
+      </button>
+    `
+  );
+}
+
+
+
+/* ---------- STATISTIK PER KATEGORI ---------- */
+
+function calcCategoryStats(){
+
+  const h=allHistory();
+
+  const dates=Array.from(
+    {length:statsPeriod},
+    (_,i)=>shifted(todayKey(),i-statsPeriod+1)
+  );
+
+  const recorded=dates.filter(date=>h[date]);
+
+  const categories=[
+    {
+      key:"mit",
+      label:"Tugas Utama",
+      icon:"target"
+    },
+    {
+      key:"deep",
+      label:"Fokus",
+      icon:"clock"
+    },
+    {
+      key:"habit",
+      label:"Kebiasaan",
+      icon:"dumbbell"
+    },
+    {
+      key:"noscroll",
+      label:"Pagi Tanpa Scroll",
+      icon:"phone"
+    },
+    {
+      key:"review",
+      label:"Evaluasi Malam",
+      icon:"book"
+    }
+  ];
+
+  return categories.map(category=>{
+
+    const done=recorded.filter(
+      date=>h[date]?.checks?.[category.key]===true
+    ).length;
+
+    const rate=recorded.length
+      ?Math.round(done/recorded.length*100)
+      :0;
+
+    return {
+      ...category,
+      done,
+      total:recorded.length,
+      rate
+    };
+
+  });
+}
+
+
+
+function stats(){
+
+  const h=allHistory();
+  const s=calcStats();
+
+  const dates=Array.from(
+    {length:statsPeriod},
+    (_,i)=>shifted(todayKey(),i-statsPeriod+1)
+  );
+
+  const entries=dates.filter(d=>h[d]);
+
+  const avg=entries.length
+    ?Math.round(
+        entries.reduce(
+          (a,d)=>a+h[d].score*20,
+          0
+        )/entries.length
+      )
+    :0;
+
+  const groupSize=
+    statsPeriod===7
+      ?1
+      :statsPeriod===30
+        ?5
+        :15;
+
+  const buckets=[];
+
+  for(let i=0;i<dates.length;i+=groupSize){
+
+    const slice=dates.slice(i,i+groupSize);
+
+    const recorded=slice.filter(d=>h[d]);
+
+    buckets.push({
+
+      value:recorded.length
+        ?Math.round(
+            recorded.reduce(
+              (a,d)=>a+h[d].score*20,
+              0
+            )/recorded.length
+          )
+        :0,
+
+      label:
+        statsPeriod===7
+          ?formatDate(
+              slice[0],
+              {weekday:"short"}
+            )
+          :String(
+              new Date(
+                slice[0]+"T12:00"
+              ).getDate()
+            )
+    });
+  }
+
+
+  const categories=calcCategoryStats();
+
+
+  const categoryRows=categories.map(c=>`
+
+    <div class="skd-category">
+
+      <span class="icon-disc">
+        ${icon(c.icon)}
+      </span>
+
+      <div class="skd-category-content">
+
+        <div class="row">
+
+          <b>
+            ${c.label}
+          </b>
+
+          <strong>
+            ${c.rate}%
+          </strong>
+
+        </div>
+
+        <div class="progress">
+
+          <span
+            style="width:${c.rate}%"
+          ></span>
+
+        </div>
+
+        <small>
+
+          ${
+            c.total
+              ?`${c.done} dari ${c.total} hari selesai`
+              :"Belum ada data"
+          }
+
+        </small>
+
+      </div>
+
+    </div>
+
+  `).join("");
+
+
+  return shell(
+    `
+
+    <div class="tabs">
+
+      ${[
+        [7,"Mingguan"],
+        [30,"Bulanan"],
+        [90,"90 Hari"]
+
+      ].map(([n,label])=>`
+
+        <button
+          class="${statsPeriod===n?"active":""}"
+          onclick="statsPeriod=${n};render()"
+        >
+          ${label}
+        </button>
+
+      `).join("")}
+
+    </div>
+
+
+
+    <section class="card chart-card">
+
+      <div class="row chart-top">
+
+        <div>
+
+          <h3>
+            Execution Rate
+          </h3>
+
+          <div class="rate">
+            ${avg}%
+          </div>
+
+          <p class="trend">
+
+            ${
+              entries.length
+                ?`${entries.length} hari tercatat`
+                :"Mulai checklist untuk mencatat progres"
+            }
+
+          </p>
+
+        </div>
+
+        <span class="icon-disc">
+          ${icon("trend")}
+        </span>
+
+      </div>
+
+
+      <div class="chart">
+
+        <div class="y-axis">
+
+          ${[100,75,50,25,0]
+            .map(n=>`<span>${n}%</span>`)
+            .join("")}
+
+        </div>
+
+        <div class="bars">
+
+          ${buckets.map(b=>`
+
+            <div class="bar-column">
+
+              <div class="bar-area">
+
+                <div
+                  class="bar-fill"
+                  style="height:${b.value}%"
+                ></div>
+
+              </div>
+
+              <small>
+                ${b.label}
+              </small>
+
+            </div>
+
+          `).join("")}
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+
+    <section class="card skd-category-card">
+
+      <div class="skd-category-heading">
+
+        <h3>
+          Konsistensi per Kategori
+        </h3>
+
+        <p>
+          Lihat kebiasaan mana yang paling konsisten.
+        </p>
+
+      </div>
+
+      ${categoryRows}
+
+    </section>
+
+
+
+    <div class="grid2">
+
+      ${kpi(
+        "fire",
+        "Streak",
+        s.streak,
+        "hari"
+      )}
+
+      ${kpi(
+        "star",
+        "Rata-rata Skor",
+        (avg/20).toFixed(1),
+        "/ 5"
+      )}
+
+      ${kpi(
+        "calendar",
+        "Hari Konsisten",
+        s.consistent,
+        "hari"
+      )}
+
+      ${kpi(
+        "calendar",
+        "Hari Tersisa",
+        s.remaining,
+        "hari"
+      )}
+
+    </div>
+
+
+    <p class="day-note">
+
+      Skor minimal 4/5 =
+      satu hari konsisten.
+
+      <br>
+
+      Streak terbaikmu:
+      ${s.best} hari.
+
+    </p>
+
+    `,
+
+    "Statistik",
+
+    "Konsistensi kecil, hasil besar."
+  );
+}
+
+
+
+/* ---------- CSS LANGSUNG DARI APP.JS ---------- */
+
+(function(){
+
+  if(document.getElementById(
+    "skd90-extra-style"
+  )) return;
+
+  const style=document.createElement("style");
+
+  style.id="skd90-extra-style";
+
+  style.textContent=`
+
+    .skd-category-card{
+      padding:20px;
+    }
+
+    .skd-category-heading{
+      margin-bottom:10px;
+    }
+
+    .skd-category-heading h3{
+      margin:0 0 5px;
+      font-size:17px;
+    }
+
+    .skd-category-heading p{
+      margin:0;
+      font-size:12px;
+      opacity:.65;
+    }
+
+    .skd-category{
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+      padding:15px 0;
+      border-top:
+        1px solid rgba(120,130,140,.15);
+    }
+
+    .skd-category-content{
+      flex:1;
+      min-width:0;
+    }
+
+    .skd-category-content .row{
+      margin-bottom:8px;
+    }
+
+    .skd-category-content b{
+      font-size:14px;
+    }
+
+    .skd-category-content strong{
+      font-size:14px;
+      color:#16885f;
+    }
+
+    .skd-category-content .progress{
+      margin-bottom:6px;
+    }
+
+    .skd-category-content small{
+      font-size:11px;
+      opacity:.65;
+    }
+
+  `;
+
+  document.head.appendChild(style);
+
+})();
