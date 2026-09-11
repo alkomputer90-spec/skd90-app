@@ -41,16 +41,117 @@ function shifted(key,n){const d=new Date(key+"T12:00:00");d.setDate(d.getDate()+
 function dayDiff(a,b){return Math.round((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000);}
 function formatDate(key,opts={day:"numeric",month:"short",year:"numeric"}){return new Date(key+"T12:00:00").toLocaleDateString("id-ID",opts);}
 const blankChecks=()=>({mit:false,deep:false,habit:false,noscroll:false,review:false});
-const defaults={onboarded:false,name:"Kamu",startDate:todayKey(),threshold:80,todayDate:todayKey(),today:{mitText:"",habitText:"Olahraga 20 menit",checks:blankChecks()},goals:[{title:"Kesehatan",target:"Olahraga 3x/minggu selama 90 hari.",progress:0},{title:"Bisnis / Karier",target:"Tentukan satu pencapaian utama untuk kariermu.",progress:0},{title:"Pengembangan Diri",target:"Membaca dan belajar secara konsisten.",progress:0}],history:{},failures:[],rewards:[{days:7,text:"Ngopi di tempat favorit"},{days:30,text:"Beli buku yang diinginkan"},{days:90,text:"Hadiah besar untuk diri sendiri"}],consequences:[],review:{win:"",fail:"",why:"",improve:""},reviews:{},settings:{focusMinutes:25,theme:"light",notifications:false}};
+const defaults={onboarded:false,name:"Kamu",startDate:todayKey(),threshold:80,todayDate:todayKey(),today:{
+  mitText:"",
+  mitItems:[{text:"",done:false}],
+  habitText:"Olahraga 20 menit",
+  checks:blankChecks()
+},goals:[{title:"Kesehatan",target:"Olahraga 3x/minggu selama 90 hari.",progress:0},{title:"Bisnis / Karier",target:"Tentukan satu pencapaian utama untuk kariermu.",progress:0},{title:"Pengembangan Diri",target:"Membaca dan belajar secara konsisten.",progress:0}],history:{},failures:[],rewards:[{days:7,text:"Ngopi di tempat favorit"},{days:30,text:"Beli buku yang diinginkan"},{days:90,text:"Hadiah besar untuk diri sendiri"}],consequences:[],review:{win:"",fail:"",why:"",improve:""},reviews:{},settings:{focusMinutes:25,theme:"light",notifications:false}};
 function load(){try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY))||{};return {...structuredClone(defaults),...v,todayDate:v.todayDate||todayKey(),today:{...defaults.today,...v.today,checks:{...blankChecks(),...v.today?.checks}},settings:{...defaults.settings,...v.settings}};}catch{return structuredClone(defaults);}}
 let data=load(),route="home",selectedDate=todayKey(),statsPeriod=7,weekOffset=0,rewardTab="rewards",journalIndex=-1,journalDraft=null,focusMode="pomodoro",toastTimeout=null,sound=null;
 let timer={running:false,remaining:data.settings.focusMinutes*60,id:null,endAt:0,elapsed:0,startedAt:0};
 function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));return true;}catch{toast("Penyimpanan penuh atau tidak tersedia. Ekspor cadangan data.");return false;}}
-function dayScore(day){return Object.values(day.checks||{}).filter(Boolean).length;}
-function syncToday(){data.history[data.todayDate]={...data.today,checks:{...data.today.checks},score:dayScore(data.today)};}
-function rollover(){if(data.todayDate===todayKey())return;syncToday();data.today={mitText:"",habitText:data.today.habitText,checks:blankChecks()};data.todayDate=todayKey();selectedDate=todayKey();save();}
-function selectedDay(){return selectedDate===todayKey()?data.today:(data.history[selectedDate]||{mitText:"",habitText:data.today.habitText,checks:blankChecks()});}
-function persistDay(){if(selectedDate===todayKey())syncToday();save();}
+function ensureMitItems(day){
+  if(!day)return [];
+
+  if(!Array.isArray(day.mitItems)||!day.mitItems.length){
+    day.mitItems=[{
+      text:String(day.mitText||""),
+      done:!!day.checks?.mit
+    }];
+  }
+
+  day.mitItems=day.mitItems
+    .slice(0,5)
+    .map(item=>({
+      text:String(item?.text||"").slice(0,300),
+      done:item?.done===true
+    }));
+
+  if(!day.mitItems.length){
+    day.mitItems=[{text:"",done:false}];
+  }
+
+  return day.mitItems;
+}
+
+function syncMitCheck(day){
+  const items=ensureMitItems(day);
+  const filled=items.filter(item=>item.text.trim());
+
+  if(!day.checks)day.checks=blankChecks();
+
+  day.checks.mit=
+    filled.length>0 &&
+    filled.every(item=>item.done);
+
+  // tetap disimpan untuk kompatibilitas versi lama
+  day.mitText=filled[0]?.text||"";
+
+  return items;
+}
+
+function currentMitText(day=data.today){
+  const items=ensureMitItems(day);
+
+  return (
+    items.find(item=>item.text.trim()&&!item.done) ||
+    items.find(item=>item.text.trim())
+  )?.text || "";
+}
+
+function dayScore(day){
+  syncMitCheck(day);
+  return Object.values(day.checks||{}).filter(Boolean).length;
+}
+
+function syncToday(){
+  syncMitCheck(data.today);
+
+  data.history[data.todayDate]={
+    ...data.today,
+    mitItems:ensureMitItems(data.today).map(item=>({...item})),
+    checks:{...data.today.checks},
+    score:dayScore(data.today)
+  };
+}
+
+function rollover(){
+  if(data.todayDate===todayKey())return;
+
+  syncToday();
+
+  data.today={
+    mitText:"",
+    mitItems:[{text:"",done:false}],
+    habitText:data.today.habitText,
+    checks:blankChecks()
+  };
+
+  data.todayDate=todayKey();
+  selectedDate=todayKey();
+  save();
+}
+
+function selectedDay(){
+  const day=
+    selectedDate===todayKey()
+      ?data.today
+      :(data.history[selectedDate]||{
+        mitText:"",
+        mitItems:[{text:"",done:false}],
+        habitText:data.today.habitText,
+        checks:blankChecks()
+      });
+
+  syncMitCheck(day);
+  return day;
+}
+
+function persistDay(){
+  if(selectedDate===todayKey())syncToday();
+  save();
+}
 function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
 const esc=escapeHtml;
 function toast(message){const el=document.getElementById("toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>el.classList.remove("show"),3200);}
@@ -60,16 +161,297 @@ function go(r){route=r;if(r==="home")selectedDate=todayKey();render();window.scr
 function dateStrip(label,prev,next,disableNext=false){return `<div class="date-strip"><button class="icon-btn" aria-label="Periode sebelumnya" onclick="${prev}">${icon("left")}</button><span>${label}</span><button class="icon-btn" aria-label="Periode berikutnya" onclick="${next}" ${disableNext?"disabled":""}>${icon("right")}</button></div>`;}
 function moveDate(n){selectedDate=shifted(selectedDate,n);render();}
 function checkRow(key,title,small,ico){const d=selectedDay(),done=d.checks[key];return `<button class="checkrow" role="checkbox" aria-checked="${done}" onclick="toggleCheck('${key}')"><span class="icon-disc">${icon(ico)}</span><span class="label"><b>${title}</b><small>${esc(small)}</small></span><span class="check ${done?"done":""}">${done?icon("check"):""}</span></button>`;}
-function home(){const d=selectedDay(),s=dayScore(d);return shell(`${dateStrip(formatDate(selectedDate,{weekday:"short",day:"numeric",month:"short",year:"numeric"}),"moveDate(-1)","moveDate(1)",selectedDate>=todayKey())}<div class="check-list"><div class="checkrow featured"><button class="label task-edit" onclick="editDaily()" aria-label="Ubah tugas utama" style="background:none;border:0;color:inherit;text-align:left;padding:0"><b>Tugas Utama Hari Ini (MIT)</b><span class="task-text">${esc(d.mitText||"Tentukan satu tugas paling penting hari ini")}</span></button><button class="check ${d.checks.mit?"done":""}" role="checkbox" aria-checked="${d.checks.mit}" aria-label="Tugas utama selesai" onclick="toggleCheck('mit')">${d.checks.mit?icon("check"):""}</button></div>${checkRow("deep","Fokus Tanpa Gangguan","Deep Work · "+data.settings.focusMinutes+" menit","clock")}${checkRow("habit","Kebiasaan Utama",d.habitText,"dumbbell")}${checkRow("noscroll","Pagi Tanpa Scroll","60 menit pertama setelah bangun","phone")}${checkRow("review","Evaluasi Malam","Refleksi singkat 3 menit","book")}</div><div class="card progress-card"><div class="row"><div class="section-title">Progres Hari Ini</div><button class="text-btn" onclick="editDaily()">Atur</button></div><div class="row"><div class="progress" role="progressbar" aria-valuenow="${s*20}" aria-valuemin="0" aria-valuemax="100" aria-label="Progres harian"><span style="width:${s*20}%"></span></div><strong>${s}/5</strong></div></div><p class="day-note">${s===5?"Semua selesai. Kamu hebat hari ini!":s>=4?"Hari yang konsisten. Teruskan langkah kecilmu.":"Satu langkah kecil, setiap hari."}</p>`, `Halo, ${esc(data.name)} <span style="font-size:21px">👋</span>`,"Siap menjalani hari yang lebih baik?",`<button class="avatar" aria-label="Buka profil" onclick="go('settings')">${esc((data.name||"K").slice(0,1).toUpperCase())}</button>`);}
+function home(){
+  const d=selectedDay();
+  const s=dayScore(d);
+  const items=ensureMitItems(d);
+
+  const mitRows=items.map((item,i)=>`
+    <div class="mit-item">
+      <span class="mit-number">${i+1}</span>
+
+      <button
+        class="mit-label"
+        onclick="editDaily()"
+        aria-label="Edit tugas ${i+1}"
+      >
+        ${esc(
+          item.text ||
+          (i===0
+            ?"Tentukan satu tugas paling penting hari ini"
+            :"Tugas tambahan")
+        )}
+      </button>
+
+      <button
+        class="check ${item.done?"done":""}"
+        role="checkbox"
+        aria-checked="${item.done}"
+        aria-label="Tugas ${i+1} selesai"
+        onclick="toggleMit(${i})"
+      >
+        ${item.done?icon("check"):""}
+      </button>
+    </div>
+  `).join("");
+
+  const totalMit=items.filter(item=>item.text.trim()).length;
+
+  return shell(
+    `
+    ${dateStrip(
+      formatDate(selectedDate,{
+        weekday:"short",
+        day:"numeric",
+        month:"short",
+        year:"numeric"
+      }),
+      "moveDate(-1)",
+      "moveDate(1)",
+      selectedDate>=todayKey()
+    )}
+
+    <div class="check-list">
+
+      <div class="checkrow featured mit-card">
+
+        <div class="mit-head">
+          <div>
+            <b>Tugas Utama Hari Ini (MIT)</b>
+            <small>
+              ${totalMit||0}/5 tugas · selesaikan yang paling penting
+            </small>
+          </div>
+
+          <button
+            class="text-btn"
+            onclick="editDaily()"
+          >
+            Atur
+          </button>
+        </div>
+
+        <div class="mit-list">
+          ${mitRows}
+        </div>
+
+      </div>
+
+      ${checkRow(
+        "deep",
+        "Fokus Tanpa Gangguan",
+        "Deep Work · "+data.settings.focusMinutes+" menit",
+        "clock"
+      )}
+
+      ${checkRow(
+        "habit",
+        "Kebiasaan Utama",
+        d.habitText,
+        "dumbbell"
+      )}
+
+      ${checkRow(
+        "noscroll",
+        "Pagi Tanpa Scroll",
+        "60 menit pertama setelah bangun",
+        "phone"
+      )}
+
+      ${checkRow(
+        "review",
+        "Evaluasi Malam",
+        "Refleksi singkat 3 menit",
+        "book"
+      )}
+
+    </div>
+
+    <div class="card progress-card">
+
+      <div class="row">
+        <div class="section-title">
+          Progres Hari Ini
+        </div>
+
+        <button
+          class="text-btn"
+          onclick="editDaily()"
+        >
+          Atur
+        </button>
+      </div>
+
+      <div class="row">
+        <div
+          class="progress"
+          role="progressbar"
+          aria-valuenow="${s*20}"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-label="Progres harian"
+        >
+          <span style="width:${s*20}%"></span>
+        </div>
+
+        <strong>${s}/5</strong>
+      </div>
+
+    </div>
+
+    <p class="day-note">
+      ${
+        s===5
+          ?"Semua selesai. Kamu hebat hari ini!"
+          :s>=4
+          ?"Hari yang konsisten. Teruskan langkah kecilmu."
+          :"Satu langkah kecil, setiap hari."
+      }
+    </p>
+    `,
+    `Halo, ${esc(data.name)}
+      <span style="font-size:21px">👋</span>`,
+    "Siap menjalani hari yang lebih baik?",
+    `
+      <button
+        class="avatar"
+        aria-label="Buka profil"
+        onclick="go('settings')"
+      >
+        ${esc((data.name||"K").slice(0,1).toUpperCase())}
+      </button>
+    `
+  );
+}
+function toggleMit(index){
+  rollover();
+
+  if(
+    selectedDate!==todayKey() &&
+    !data.history[selectedDate]
+  ){
+    data.history[selectedDate]={
+      mitText:"",
+      mitItems:[{text:"",done:false}],
+      habitText:data.today.habitText,
+      checks:blankChecks(),
+      score:0
+    };
+  }
+
+  const day=selectedDay();
+  const items=ensureMitItems(day);
+  const item=items[index];
+
+  if(!item||!item.text.trim()){
+    toast("Isi tugas MIT terlebih dahulu.");
+    return;
+  }
+
+  item.done=!item.done;
+
+  syncMitCheck(day);
+  persistDay();
+  render();
+}
 function toggleCheck(key){rollover();if(selectedDate!==todayKey()&&!data.history[selectedDate])data.history[selectedDate]={mitText:"",habitText:data.today.habitText,checks:blankChecks(),score:0};const d=selectedDay();d.checks[key]=!d.checks[key];d.score=dayScore(d);persistDay();render();}
 function field(label,name,value="",type="text",attrs=""){return `<label class="reviewQ"><b>${label}</b><input class="input" name="${name}" type="${type}" value="${esc(value)}" ${attrs}></label>`;}
 function area(label,name,value=""){return `<label class="reviewQ"><b>${label}</b><textarea name="${name}" placeholder="Tulis di sini…">${esc(value)}</textarea></label>`;}
 function dialogForm(title,description,body,onSubmit,label="Simpan"){const dlg=document.getElementById("dialog");dlg.innerHTML=`<h2 id="dialog-title">${title}</h2><p>${description}</p><form id="dialog-form">${body}<div class="dialog-actions"><button type="button" class="btn ghost" onclick="closeDialog()">Batal</button><button class="btn primary" type="submit">${label}</button></div></form>`;dlg.showModal();document.getElementById("dialog-form").onsubmit=e=>{e.preventDefault();onSubmit(new FormData(e.target));};}
 function closeDialog(){document.getElementById("dialog").close();}
-function editDaily(){const d=selectedDay();dialogForm("Rencana hari ini","Pilih satu hal yang paling berarti.",field("Tugas utama (MIT)","mit",d.mitText,"text",'maxlength="300" placeholder="Contoh: selesaikan proposal klien"')+field("Kebiasaan utama","habit",d.habitText,"text",'required maxlength="150"'),f=>{if(selectedDate!==todayKey()&&!data.history[selectedDate])data.history[selectedDate]={...d,checks:{...d.checks}};const day=selectedDay();day.mitText=f.get("mit").trim();day.habitText=f.get("habit").trim();persistDay();closeDialog();render();toast("Rencana harian tersimpan.");});}
+function editDaily(){
+  const d=selectedDay();
+  const items=ensureMitItems(d);
+
+  const mitFields=Array.from(
+    {length:5},
+    (_,i)=>field(
+      i===0
+        ?"Tugas utama 1"
+        :`Tugas ${i+1} (opsional)`,
+      `mit${i}`,
+      items[i]?.text||"",
+      "text",
+      `maxlength="300" placeholder="${
+        i===0
+          ?"Contoh: selesaikan proposal klien"
+          :"Tambahkan tugas jika diperlukan"
+      }"`
+    )
+  ).join("");
+
+  dialogForm(
+    "Rencana hari ini",
+    "Isi hingga 5 tugas utama. Tidak perlu mengisi semuanya.",
+
+    mitFields +
+
+    field(
+      "Kebiasaan utama",
+      "habit",
+      d.habitText,
+      "text",
+      'required maxlength="150"'
+    ),
+
+    f=>{
+
+      if(
+        selectedDate!==todayKey() &&
+        !data.history[selectedDate]
+      ){
+        data.history[selectedDate]={
+          ...d,
+          checks:{...d.checks},
+          mitItems:ensureMitItems(d).map(item=>({...item}))
+        };
+      }
+
+      const day=selectedDay();
+      const oldItems=ensureMitItems(day);
+
+      const newItems=[];
+
+      for(let i=0;i<5;i++){
+        const text=String(
+          f.get(`mit${i}`)||""
+        ).trim();
+
+        if(!text)continue;
+
+        const old=oldItems[i];
+
+        newItems.push({
+          text,
+          done:
+            old &&
+            old.text===text
+              ?old.done
+              :false
+        });
+      }
+
+      day.mitItems=
+        newItems.length
+          ?newItems
+          :[{text:"",done:false}];
+
+      day.habitText=
+        String(f.get("habit")||"").trim();
+
+      syncMitCheck(day);
+      persistDay();
+
+      closeDialog();
+      render();
+
+      toast("Rencana harian tersimpan.");
+    }
+  );
+}
 function splash(){return `<main class="splash"><div><img class="splash-logo" src="mark.svg" alt=""><h1>SKD90</h1><p class="tagline">Disiplin Hari Ini,<br>Hidup Lebih Baik Nanti.</p></div><div class="splash-footer"><button class="btn" onclick="startApp()">Mulai Sekarang ${icon("arrow")}</button><p class="footnote">Perubahan besar dimulai dari<br>langkah kecil yang konsisten.</p><small>SISTEM KENDALI DIRI · 90 HARI</small></div></main>`;}
 function startApp(){data.onboarded=true;save();go("home");}
-function focus(){return shell(`<div class="tabs" role="group" aria-label="Mode fokus"><button class="${focusMode==="pomodoro"?"active":""}" onclick="setMode('pomodoro')" aria-pressed="${focusMode==='pomodoro'}">Pomodoro</button><button class="${focusMode==="free"?"active":""}" onclick="setMode('free')" aria-pressed="${focusMode==='free'}">Mode Bebas</button></div><div class="timer-wrap"><div class="timer"><svg class="timer-ring" viewBox="0 0 260 260" aria-hidden="true"><circle class="timer-track" cx="130" cy="130" r="115" stroke-dasharray="542 723"/><circle id="timer-arc" class="timer-value" cx="130" cy="130" r="115" stroke-dasharray="542 723"/></svg><div><div id="timer-digits" class="timer-digits" role="timer">25:00</div><p id="timer-state" class="timer-state">Fokus</p></div></div><div class="timer-controls"><button class="icon-btn" aria-label="Ulangi timer" onclick="resetTimer()">${icon("reset")}</button><button class="play" id="timer-toggle" aria-label="Mulai fokus" onclick="toggleTimer()">${icon("play")}</button><button class="icon-btn" aria-label="Akhiri sesi fokus" onclick="finishSession()">${icon("power")}</button></div>${focusMode==="pomodoro"?`<div class="duration">${[25,50].map(n=>`<button class="chip ${data.settings.focusMinutes===n?"active":""}" onclick="setFocus(${n})">${n} menit</button>`).join("")}</div>`:`<p class="mini" style="margin:22px 0">Fokus sesuai ritmemu. Minimal 25 menit.</p>`}</div><p class="focus-tip">${esc(data.today.mitText||"Satu sesi. Satu tugas. Tanpa gangguan.")}</p><button class="card sound-card" onclick="toggleSound()" aria-pressed="${!!sound}"><span class="icon-disc">${icon("rain")}</span><span class="label"><b>Suara Fokus</b><small>${sound?"Hujan sedang diputar · ketuk untuk matikan":"Hujan · ketuk untuk putar"}</small></span>${icon(sound?"volume":"right","chevron")}</button>`,"Fokus Tanpa Gangguan","Satu langkah lebih dekat ke tujuanmu.");}
+function focus(){return shell(`<div class="tabs" role="group" aria-label="Mode fokus"><button class="${focusMode==="pomodoro"?"active":""}" onclick="setMode('pomodoro')" aria-pressed="${focusMode==='pomodoro'}">Pomodoro</button><button class="${focusMode==="free"?"active":""}" onclick="setMode('free')" aria-pressed="${focusMode==='free'}">Mode Bebas</button></div><div class="timer-wrap"><div class="timer"><svg class="timer-ring" viewBox="0 0 260 260" aria-hidden="true"><circle class="timer-track" cx="130" cy="130" r="115" stroke-dasharray="542 723"/><circle id="timer-arc" class="timer-value" cx="130" cy="130" r="115" stroke-dasharray="542 723"/></svg><div><div id="timer-digits" class="timer-digits" role="timer">25:00</div><p id="timer-state" class="timer-state">Fokus</p></div></div><div class="timer-controls"><button class="icon-btn" aria-label="Ulangi timer" onclick="resetTimer()">${icon("reset")}</button><button class="play" id="timer-toggle" aria-label="Mulai fokus" onclick="toggleTimer()">${icon("play")}</button><button class="icon-btn" aria-label="Akhiri sesi fokus" onclick="finishSession()">${icon("power")}</button></div>${focusMode==="pomodoro"?`<div class="duration">${[25,50].map(n=>`<button class="chip ${data.settings.focusMinutes===n?"active":""}" onclick="setFocus(${n})">${n} menit</button>`).join("")}</div>`:`<p class="mini" style="margin:22px 0">Fokus sesuai ritmemu. Minimal 25 menit.</p>`}</div><p class="focus-tip">${esc(currentMitText(data.today)||"Satu sesi. Satu tugas. Tanpa gangguan.")}</p><button class="card sound-card" onclick="toggleSound()" aria-pressed="${!!sound}"><span class="icon-disc">${icon("rain")}</span><span class="label"><b>Suara Fokus</b><small>${sound?"Hujan sedang diputar · ketuk untuk matikan":"Hujan · ketuk untuk putar"}</small></span>${icon(sound?"volume":"right","chevron")}</button>`,"Fokus Tanpa Gangguan","Satu langkah lebih dekat ke tujuanmu.");}
 function setMode(mode){if(mode===focusMode)return;focusMode=mode;resetTimer();}
 function timerSeconds(){return focusMode==="free"?timer.elapsed:timer.remaining;}
 function updateTimerDisplay(){const el=document.getElementById("timer-digits");if(!el)return;const s=timerSeconds();el.textContent=`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;document.getElementById("timer-state").textContent=timer.running?"Sedang fokus":s===0&&focusMode==="pomodoro"?"Sesi selesai":"Fokus";document.getElementById("timer-arc").setAttribute("stroke-dasharray",`${focusMode==="free"?542:542*Math.min(1,timer.remaining/(data.settings.focusMinutes*60))} 723`);const btn=document.getElementById("timer-toggle");btn.innerHTML=icon(timer.running?"pause":"play");btn.setAttribute("aria-label",timer.running?"Jeda fokus":"Mulai fokus");}
