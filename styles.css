@@ -15,3 +15,97 @@
 @media(max-width:360px){.stack{padding-left:16px;padding-right:16px;gap:13px}.top{padding-left:18px;padding-right:18px}.brand{font-size:22px}.checkrow{padding:12px;gap:10px}.icon-disc{width:36px;height:36px}.label b{font-size:14px}.label small{font-size:13px}.timer-digits{font-size:48px}.kpi{padding:14px 10px;gap:8px}.kpi-label{font-size:11px}}
 .timer{overflow:hidden}.checkrow:focus-visible{outline-offset:2px}.reward-row{text-align:left}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+/* =========================
+   MULTI MIT
+   ========================= */
+
+.mit-card{
+  display:block !important;
+  padding:20px !important;
+}
+
+.mit-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.mit-head > div{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.mit-head b{
+  color:#fff;
+  font-size:15px;
+}
+
+.mit-head small{
+  color:rgba(255,255,255,.65);
+  font-size:12px;
+}
+
+.mit-card .text-btn{
+  color:#8ce3bd;
+  flex-shrink:0;
+}
+
+.mit-list{
+  display:flex;
+  flex-direction:column;
+}
+
+.mit-item{
+  display:grid;
+  grid-template-columns:24px 1fr 34px;
+  align-items:center;
+  gap:10px;
+  min-height:52px;
+  border-top:1px solid rgba(255,255,255,.09);
+}
+
+.mit-item:first-child{
+  border-top:0;
+}
+
+.mit-number{
+  width:22px;
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:rgba(255,255,255,.10);
+  color:rgba(255,255,255,.75);
+  font-size:11px;
+  font-weight:700;
+}
+
+.mit-label{
+  appearance:none;
+  border:0;
+  background:none;
+  padding:10px 0;
+  text-align:left;
+  color:#fff;
+  font:inherit;
+  font-weight:650;
+  line-height:1.35;
+  cursor:pointer;
+}
+
+.mit-item .check{
+  border-color:rgba(255,255,255,.65);
+}
+
+.mit-item .check.done{
+  background:#28a977;
+  border-color:#28a977;
+}
+
+.mit-item .check.done svg{
+  color:#fff;
+}
