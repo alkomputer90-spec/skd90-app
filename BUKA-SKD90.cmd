@@ -6,7 +6,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Buka http://127.0.0.1:8089 di browser.
+echo Buka http://127.0.0.1:8093 di browser.
 echo Biarkan jendela ini terbuka. Tekan Ctrl+C untuk berhenti.
 node server.cjs
 pause
+

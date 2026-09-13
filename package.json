@@ -1,0 +1,11 @@
+{
+  "name": "skd90-method",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SKD90 Method v1.0 - integrated personal execution system",
+  "scripts": {
+    "start": "node server.cjs",
+    "test": "node --test method.test.cjs integration.test.cjs"
+  },
+  "engines": { "node": ">=20" }
+}
